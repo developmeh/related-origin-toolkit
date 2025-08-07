@@ -15,8 +15,15 @@ export {
   LabelCount,
   ValidationResult,
   CONSTANTS,
-  authenticatorStatusToString
+  authenticatorStatusToString,
+  LoggingAdapter
 } from './types';
+
+// Export logging utilities
+export {
+  createLoggingAdapter,
+  defaultLogger
+} from './logger';
 
 // Export validation functions
 export {
@@ -26,8 +33,9 @@ export {
 } from './validator';
 
 // Re-export for convenience
-import { AuthenticatorStatus, authenticatorStatusToString } from './types';
+import { AuthenticatorStatus, authenticatorStatusToString, LoggingAdapter } from './types';
 import { validateWellKnownJSON, fetchWellKnownWebAuthn, validateOrigin } from './validator';
+import { createLoggingAdapter, defaultLogger } from './logger';
 
 /**
  * Main validation function that provides a simple interface for validating origins.
@@ -35,26 +43,35 @@ import { validateWellKnownJSON, fetchWellKnownWebAuthn, validateOrigin } from '.
  * 
  * @param rpId The Relying Party ID (domain) to check
  * @param origin The caller origin to validate
+ * @param logger Optional logging adapter for logging messages
  * @returns Promise resolving to validation result with status and message
  */
-export async function validatePasskeyOrigin(rpId: string, origin: string): Promise<{
+export async function validatePasskeyOrigin(
+  rpId: string, 
+  origin: string, 
+  logger?: LoggingAdapter
+): Promise<{
   isValid: boolean;
   status: AuthenticatorStatus;
   message: string;
 }> {
+  const log = createLoggingAdapter(logger || defaultLogger);
   try {
+    log(`Validating origin "${origin}" against rpId "${rpId}"`);
     // The validateOrigin function expects (callerOrigin, domain) parameters
     // where callerOrigin is the origin to validate and domain is the rpId to check against
-    const status = await validateOrigin(origin, rpId);
+    const status = await validateOrigin(origin, rpId, logger);
     const isValid = status === AuthenticatorStatus.SUCCESS;
     const message = authenticatorStatusToString(status);
     
+    log(`Validation result: ${isValid ? 'Valid' : 'Invalid'}, status: ${message}`);
     return {
       isValid,
       status,
       message
     };
   } catch (error) {
+    log(`Validation error`, error instanceof Error ? error : new Error(String(error)));
     return {
       isValid: false,
       status: AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH,
@@ -69,24 +86,33 @@ export async function validatePasskeyOrigin(rpId: string, origin: string): Promi
  * 
  * @param origin The caller origin to validate
  * @param wellKnownJson The JSON string from the .well-known/webauthn endpoint
+ * @param logger Optional logging adapter for logging messages
  * @returns Validation result with status and message
  */
-export function validatePasskeyOriginFromJSON(origin: string, wellKnownJson: string): {
+export function validatePasskeyOriginFromJSON(
+  origin: string, 
+  wellKnownJson: string, 
+  logger?: LoggingAdapter
+): {
   isValid: boolean;
   status: AuthenticatorStatus;
   message: string;
 } {
+  const log = createLoggingAdapter(logger || defaultLogger);
   try {
-    const status = validateWellKnownJSON(origin, wellKnownJson);
+    log(`Validating origin "${origin}" against well-known JSON data`);
+    const status = validateWellKnownJSON(origin, wellKnownJson, logger);
     const isValid = status === AuthenticatorStatus.SUCCESS;
     const message = authenticatorStatusToString(status);
     
+    log(`Validation result: ${isValid ? 'Valid' : 'Invalid'}, status: ${message}`);
     return {
       isValid,
       status,
       message
     };
   } catch (error) {
+    log(`Validation error`, error instanceof Error ? error : new Error(String(error)));
     return {
       isValid: false,
       status: AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR,

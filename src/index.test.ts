@@ -5,7 +5,8 @@ import {
   isParsingError,
   isLabelLimitHit,
   AuthenticatorStatus,
-  authenticatorStatusToString
+  authenticatorStatusToString,
+  LoggingAdapter
 } from './index';
 
 describe('validatePasskeyOrigin', () => {
@@ -32,7 +33,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(true);
     expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
-    expect(result.message).toBe('SUCCESS');
+    expect(result.message).toBe('Success');
   });
 
   it('should return invalid result for non-matching origin', async () => {
@@ -49,7 +50,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should return invalid result for fetch errors', async () => {
@@ -61,7 +62,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should return invalid result for 404 responses', async () => {
@@ -78,7 +79,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should handle label limit hit scenario', async () => {
@@ -95,7 +96,30 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS');
+    expect(result.message).toBe('Origin not authorized by the relying party (exceeded maximum of 5 unique domains)');
+  });
+
+  it('should use the provided logger', async () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    
+    // Use a case where direct validation succeeds to keep the test simple
+    await validatePasskeyOrigin('example.com', 'https://app.example.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger when validation fails', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+    
+    const mockLogger: LoggingAdapter = jest.fn();
+    await validatePasskeyOrigin('bar.com', 'https://foo.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
   });
 });
 
@@ -105,7 +129,7 @@ describe('validatePasskeyOriginFromJSON', () => {
     
     expect(result.isValid).toBe(true);
     expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
-    expect(result.message).toBe('SUCCESS');
+    expect(result.message).toBe('Success');
   });
 
   it('should return invalid result for non-matching origin', () => {
@@ -113,7 +137,7 @@ describe('validatePasskeyOriginFromJSON', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should return invalid result for malformed JSON', () => {
@@ -121,7 +145,7 @@ describe('validatePasskeyOriginFromJSON', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR');
+    expect(result.message).toBe('Invalid format in .well-known/webauthn file');
   });
 
   it('should return invalid result for empty origins array', () => {
@@ -129,7 +153,7 @@ describe('validatePasskeyOriginFromJSON', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should handle label limit hit scenario', () => {
@@ -138,7 +162,7 @@ describe('validatePasskeyOriginFromJSON', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS');
+    expect(result.message).toBe('Origin not authorized by the relying party (exceeded maximum of 5 unique domains)');
   });
 
   it('should handle exceptions gracefully', () => {
@@ -148,6 +172,27 @@ describe('validatePasskeyOriginFromJSON', () => {
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR);
     expect(result.message).toContain('Validation failed');
+  });
+
+  it('should use the provided logger for successful validation', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', '{"origins": ["https://foo.com"]}', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger for failed validation', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', '{"origins": ["https://bar.com"]}', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger when handling exceptions', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', null as any, mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
   });
 });
 
@@ -190,14 +235,15 @@ describe('utility functions', () => {
 
   describe('authenticatorStatusToString', () => {
     it('should convert all status values to correct strings', () => {
-      expect(authenticatorStatusToString(AuthenticatorStatus.SUCCESS)).toBe('SUCCESS');
-      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR)).toBe('BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR');
-      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH)).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
-      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS)).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS');
+      expect(authenticatorStatusToString(AuthenticatorStatus.SUCCESS)).toBe('Success');
+      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR)).toBe('Invalid format in .well-known/webauthn file');
+      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH)).toBe('Origin not authorized by the relying party');
+      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS)).toBe('Origin not authorized by the relying party (exceeded maximum of 5 unique domains)');
+      expect(authenticatorStatusToString(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NOT_SUBDOMAIN_OF_ORIGIN)).toBe('Relying Party ID is not a valid subdomain of the origin');
     });
 
     it('should handle unknown status values', () => {
-      expect(authenticatorStatusToString(999 as AuthenticatorStatus)).toBe('UNKNOWN_STATUS(999)');
+      expect(authenticatorStatusToString(999 as AuthenticatorStatus)).toBe('Unknown status (999)');
     });
   });
 });
@@ -225,7 +271,7 @@ describe('integration tests', () => {
     
     expect(result.isValid).toBe(true);
     expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
-    expect(result.message).toBe('SUCCESS');
+    expect(result.message).toBe('Success');
     
     // Direct validation should succeed, so fetch should not be called
     expect(global.fetch).not.toHaveBeenCalled();
@@ -253,7 +299,7 @@ describe('integration tests', () => {
     
     expect(result.isValid).toBe(true);
     expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
-    expect(result.message).toBe('SUCCESS');
+    expect(result.message).toBe('Success');
     
     // Verify the correct URL was fetched
     expect(global.fetch).toHaveBeenCalledWith(
