@@ -5,7 +5,8 @@ import {
   isParsingError,
   isLabelLimitHit,
   AuthenticatorStatus,
-  authenticatorStatusToString
+  authenticatorStatusToString,
+  LoggingAdapter
 } from './index';
 
 describe('validatePasskeyOrigin', () => {
@@ -97,6 +98,29 @@ describe('validatePasskeyOrigin', () => {
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS);
     expect(result.message).toBe('Origin not authorized by the relying party (exceeded maximum of 5 unique domains)');
   });
+
+  it('should use the provided logger', async () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    
+    // Use a case where direct validation succeeds to keep the test simple
+    await validatePasskeyOrigin('example.com', 'https://app.example.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger when validation fails', async () => {
+    const mockResponse = {
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+    
+    const mockLogger: LoggingAdapter = jest.fn();
+    await validatePasskeyOrigin('bar.com', 'https://foo.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
 });
 
 describe('validatePasskeyOriginFromJSON', () => {
@@ -148,6 +172,27 @@ describe('validatePasskeyOriginFromJSON', () => {
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR);
     expect(result.message).toContain('Validation failed');
+  });
+
+  it('should use the provided logger for successful validation', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', '{"origins": ["https://foo.com"]}', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger for failed validation', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', '{"origins": ["https://bar.com"]}', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger when handling exceptions', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validatePasskeyOriginFromJSON('https://foo.com', null as any, mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
   });
 });
 

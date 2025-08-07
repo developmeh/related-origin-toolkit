@@ -1,5 +1,5 @@
 import { validateWellKnownJSON, fetchWellKnownWebAuthn, validateOrigin } from './validator';
-import { AuthenticatorStatus } from './types';
+import { AuthenticatorStatus, LoggingAdapter } from './types';
 
 describe('validateWellKnownJSON', () => {
   const testCases = [
@@ -127,6 +127,12 @@ describe('validateWellKnownJSON', () => {
     expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
   });
 
+  it('should use the provided logger', () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    validateWellKnownJSON('https://foo.com', '{"origins": ["https://foo.com"]}', mockLogger);
+    expect(mockLogger).toHaveBeenCalled();
+  });
+
   it('should handle ports in origins', () => {
     const result = validateWellKnownJSON('https://foo.com:8080', '{"origins": ["https://foo.com:8080"]}');
     expect(result).toBe(AuthenticatorStatus.SUCCESS);
@@ -233,6 +239,20 @@ describe('fetchWellKnownWebAuthn', () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
     await expect(fetchWellKnownWebAuthn('example.com')).rejects.toThrow('Network error');
+  });
+
+  it('should use the provided logger', async () => {
+    const mockResponse = {
+      ok: true,
+      text: jest.fn().mockResolvedValue('{"origins": ["https://example.com"]}'),
+      headers: new Map([['content-length', '100']]),
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+
+    const mockLogger: LoggingAdapter = jest.fn();
+    await fetchWellKnownWebAuthn('example.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
   });
 });
 
@@ -343,6 +363,29 @@ describe('validateOrigin', () => {
 
     const result = await validateOrigin('https://foo.com', 'bar.com');
     expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('should use the provided logger for direct validation', async () => {
+    const mockLogger: LoggingAdapter = jest.fn();
+    await validateOrigin('https://example.com', 'example.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should use the provided logger for well-known validation', async () => {
+    const mockResponse = {
+      ok: true,
+      text: jest.fn().mockResolvedValue('{"origins": ["https://foo.com"]}'),
+      headers: new Map([['content-length', '100']]),
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+
+    const mockLogger: LoggingAdapter = jest.fn();
+    await validateOrigin('https://foo.com', 'bar.com', mockLogger);
+    
+    expect(mockLogger).toHaveBeenCalled();
     expect(global.fetch).toHaveBeenCalled();
   });
 });

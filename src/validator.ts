@@ -1,5 +1,6 @@
 import * as psl from 'psl';
-import { AuthenticatorStatus, WebAuthnResponse, CONSTANTS } from './types';
+import { AuthenticatorStatus, WebAuthnResponse, CONSTANTS, LoggingAdapter } from './types';
+import { createLoggingAdapter, defaultLogger } from './logger';
 
 /**
  * Extracts the eTLD+1 label from a domain using the psl package.
@@ -48,35 +49,45 @@ function getLabel(domain: string): string {
  * 
  * @param callerOrigin The origin to validate
  * @param jsonData The JSON data from the .well-known/webauthn endpoint
+ * @param logger Optional logging adapter for logging messages
  * @returns AuthenticatorStatus indicating the validation result
  */
-export function validateWellKnownJSON(callerOrigin: string, jsonData: string): AuthenticatorStatus {
+export function validateWellKnownJSON(callerOrigin: string, jsonData: string, logger?: LoggingAdapter): AuthenticatorStatus {
+  const log = createLoggingAdapter(logger || defaultLogger);
   let webAuthnResp: WebAuthnResponse;
   
   // Parse the JSON
   try {
+    log(`Parsing JSON data for validation`);
     webAuthnResp = JSON.parse(jsonData);
   } catch (error) {
+    log(`Failed to parse JSON data`, error instanceof Error ? error : new Error(String(error)));
     return AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR;
   }
 
   // Check if the origins array exists and is an array
   if (!webAuthnResp.origins || !Array.isArray(webAuthnResp.origins)) {
+    log(`Invalid JSON format: origins property missing or not an array`);
     return AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR;
   }
 
   // Validate that all origins are strings
   for (const origin of webAuthnResp.origins) {
     if (typeof origin !== 'string') {
+      log(`Invalid JSON format: origin is not a string`);
       return AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR;
     }
   }
+  
+  log(`JSON validation passed, found ${webAuthnResp.origins.length} origins`);
 
   // Parse the caller origin
   let callerURL: URL;
   try {
+    log(`Parsing caller origin: ${callerOrigin}`);
     callerURL = new URL(callerOrigin);
   } catch (error) {
+    log(`Failed to parse caller origin: ${callerOrigin}`, error instanceof Error ? error : new Error(String(error)));
     return AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH;
   }
 
@@ -84,35 +95,45 @@ export function validateWellKnownJSON(callerOrigin: string, jsonData: string): A
   const uniqueLabels = new Set<string>();
   let hitLimits = false;
 
+  log(`Checking origins for a match with caller origin: ${callerOrigin}`);
   for (const originStr of webAuthnResp.origins) {
     let originURL: URL;
     try {
+      log(`Parsing origin from JSON: ${originStr}`);
       originURL = new URL(originStr);
     } catch (error) {
+      log(`Skipping invalid origin: ${originStr}`, error instanceof Error ? error : new Error(String(error)));
       continue;
     }
 
     // Extract the domain
     const domain = originURL.hostname;
     if (!domain) {
+      log(`Skipping origin with no hostname: ${originStr}`);
       continue;
     }
 
     // Extract the eTLD+1 label using psl package
     let etldPlus1Label: string;
     try {
+      log(`Extracting eTLD+1 label from domain: ${domain}`);
       etldPlus1Label = getLabel(domain);
     } catch (error) {
       // Skip this origin if we can't extract the label
+      log(`Failed to extract eTLD+1 label from domain: ${domain}`, error instanceof Error ? error : new Error(String(error)));
       continue;
     }
 
     if (!uniqueLabels.has(etldPlus1Label)) {
       if (uniqueLabels.size >= CONSTANTS.MAX_LABELS) {
+        log(`Hit label limit (${CONSTANTS.MAX_LABELS}), skipping further label checks`);
         hitLimits = true;
         continue;
       }
+      log(`Adding new unique label: ${etldPlus1Label}`);
       uniqueLabels.add(etldPlus1Label);
+    } else {
+      log(`Label already processed: ${etldPlus1Label}`);
     }
 
     // Check if the origin matches the caller origin
@@ -123,14 +144,18 @@ export function validateWellKnownJSON(callerOrigin: string, jsonData: string): A
     const callerScheme = callerOrigin.split('://')[0];
     const callerHost = callerOrigin.split('://')[1]?.split('/')[0] || '';
     
+    log(`Comparing origin "${originScheme}://${originHost}" with caller "${callerScheme}://${callerHost}"`);
     if (originScheme === callerScheme && originHost === callerHost) {
+      log(`Found matching origin: ${originStr}`);
       return AuthenticatorStatus.SUCCESS;
     }
   }
 
   if (hitLimits) {
+    log(`Validation failed: Hit label limit without finding a match`);
     return AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS;
   }
+  log(`Validation failed: No matching origin found`);
   return AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH;
 }
 
@@ -138,28 +163,35 @@ export function validateWellKnownJSON(callerOrigin: string, jsonData: string): A
  * Fetches the .well-known/webauthn endpoint for the given domain.
  * 
  * @param domain The domain to fetch from (with or without protocol)
+ * @param logger Optional logging adapter for logging messages
  * @returns Promise resolving to the JSON response as string
  */
-export async function fetchWellKnownWebAuthn(domain: string): Promise<string> {
+export async function fetchWellKnownWebAuthn(domain: string, logger?: LoggingAdapter): Promise<string> {
+  const log = createLoggingAdapter(logger || defaultLogger);
   // Ensure domain is properly formatted
   if (!domain.startsWith('https://') && !domain.startsWith('http://')) {
+    log(`Adding https:// prefix to domain: ${domain}`);
     domain = 'https://' + domain;
   }
 
   // Parse the domain to ensure it's valid
   let parsedURL: URL;
   try {
+    log(`Parsing domain URL: ${domain}`);
     parsedURL = new URL(domain);
   } catch (error) {
+    log(`Failed to parse domain URL: ${domain}`, error instanceof Error ? error : new Error(String(error)));
     throw new Error(`Invalid domain: ${error}`);
   }
 
   // Construct the well-known URL
   const wellKnownURL = `${parsedURL.protocol}//${parsedURL.hostname}${CONSTANTS.WELL_KNOWN_PATH}`;
+  log(`Constructed well-known URL: ${wellKnownURL}`);
 
   // Fetch with timeout
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CONSTANTS.TIMEOUT);
+  log(`Fetching well-known endpoint with ${CONSTANTS.TIMEOUT}ms timeout`);
 
   try {
     const response = await fetch(wellKnownURL, {
@@ -171,30 +203,43 @@ export async function fetchWellKnownWebAuthn(domain: string): Promise<string> {
     });
 
     clearTimeout(timeoutId);
+    log(`Received response: HTTP ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      const errorMsg = `HTTP ${response.status}: ${response.statusText}`;
+      log(`Error response: ${errorMsg}`);
+      throw new Error(errorMsg);
     }
 
     // Check content length
     const contentLength = response.headers.get('content-length');
-    if (contentLength && parseInt(contentLength) > CONSTANTS.MAX_BODY_SIZE) {
-      throw new Error(`Response too large: ${contentLength} bytes`);
+    if (contentLength) {
+      log(`Content-Length header: ${contentLength} bytes`);
+      if (parseInt(contentLength) > CONSTANTS.MAX_BODY_SIZE) {
+        const errorMsg = `Response too large: ${contentLength} bytes`;
+        log(errorMsg);
+        throw new Error(errorMsg);
+      }
     }
 
     const text = await response.text();
+    log(`Received response body: ${text.length} bytes`);
     
     // Additional size check after reading
     if (text.length > CONSTANTS.MAX_BODY_SIZE) {
-      throw new Error(`Response too large: ${text.length} bytes`);
+      const errorMsg = `Response too large: ${text.length} bytes`;
+      log(errorMsg);
+      throw new Error(errorMsg);
     }
 
     return text;
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === 'AbortError') {
+      log(`Request timed out after ${CONSTANTS.TIMEOUT}ms`);
       throw new Error('Request timeout');
     }
+    log(`Fetch error`, error instanceof Error ? error : new Error(String(error)));
     throw error;
   }
 }
@@ -284,20 +329,27 @@ function isValidDomainForOrigin(callerOrigin: string, domain: string): boolean {
  * 
  * @param callerOrigin The origin to validate
  * @param domain The domain to check against
+ * @param logger Optional logging adapter for logging messages
  * @returns Promise resolving to AuthenticatorStatus
  */
-export async function validateOrigin(callerOrigin: string, domain: string): Promise<AuthenticatorStatus> {
+export async function validateOrigin(callerOrigin: string, domain: string, logger?: LoggingAdapter): Promise<AuthenticatorStatus> {
+  const log = createLoggingAdapter(logger || defaultLogger);
   // First check if the domain is a valid effective subdomain of the origin or matches it
+  log(`Validating if domain "${domain}" is a valid subdomain of origin "${callerOrigin}"`);
   if (isValidDomainForOrigin(callerOrigin, domain)) {
+    log(`Domain "${domain}" is a valid subdomain of origin "${callerOrigin}"`);
     return AuthenticatorStatus.SUCCESS;
   }
   
   // If not, try the well-known endpoint
+  log(`Domain "${domain}" is not a valid subdomain of origin "${callerOrigin}", trying .well-known/webauthn endpoint`);
   try {
-    const jsonData = await fetchWellKnownWebAuthn(domain);
-    return validateWellKnownJSON(callerOrigin, jsonData);
+    const jsonData = await fetchWellKnownWebAuthn(domain, logger);
+    log(`Successfully fetched .well-known/webauthn data for domain "${domain}", validating JSON`);
+    return validateWellKnownJSON(callerOrigin, jsonData, logger);
   } catch (error) {
     // If there's an error fetching or parsing the well-known endpoint, it's not valid
+    log(`Failed to fetch or parse .well-known/webauthn for domain "${domain}"`, error instanceof Error ? error : new Error(String(error)));
     return AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH;
   }
 }
