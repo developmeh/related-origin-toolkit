@@ -316,6 +316,34 @@ make test
 npm test
 ```
 
+## Continuous Integration and Deployment
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+### Automated Testing
+
+Tests are automatically run on:
+- Every push to the master branch
+- Every pull request targeting the master branch
+
+The test workflow runs across multiple Node.js versions (16.x, 18.x, 20.x) to ensure compatibility.
+
+### Automated Releases
+
+When you push a tag starting with 'v' (e.g., v1.0.0), GitHub Actions will:
+1. Run tests to ensure everything is working
+2. Build the project
+3. Create a GitHub release with the tag name
+4. Attach the compiled dist directory as a tarball to the release
+5. Publish the package to npm
+
+To create a new release:
+```bash
+# Update version in package.json first
+npm version patch  # or minor, or major
+git push --follow-tags
+```
+
 ### Testing with Watch Mode
 
 ```bash
