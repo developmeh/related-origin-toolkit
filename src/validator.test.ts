@@ -248,7 +248,58 @@ describe('validateOrigin', () => {
     jest.clearAllMocks();
   });
 
-  it('should return SUCCESS for valid origin', async () => {
+  // Direct domain validation tests
+  it('should return SUCCESS when domain exactly matches origin hostname', async () => {
+    // No fetch call should be made
+    const result = await validateOrigin('https://example.com', 'example.com');
+    expect(result).toBe(AuthenticatorStatus.SUCCESS);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should return SUCCESS when domain is a valid registrable domain suffix of origin hostname', async () => {
+    // No fetch call should be made
+    const result = await validateOrigin('https://sub.example.com', 'example.com');
+    expect(result).toBe(AuthenticatorStatus.SUCCESS);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should return SUCCESS for multi-level subdomains', async () => {
+    // No fetch call should be made
+    const result = await validateOrigin('https://deep.sub.example.com', 'example.com');
+    expect(result).toBe(AuthenticatorStatus.SUCCESS);
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should not validate when domain is not a proper suffix (no subdomain boundary)', async () => {
+    // This should fail the direct validation and try the well-known endpoint
+    const mockResponse = {
+      ok: true,
+      text: jest.fn().mockResolvedValue('{"origins": ["https://other.com"]}'),
+      headers: new Map([['content-length', '100']]),
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+
+    const result = await validateOrigin('https://notexample.com', 'example.com');
+    expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('should not validate when domain is a different TLD', async () => {
+    // This should fail the direct validation and try the well-known endpoint
+    const mockResponse = {
+      ok: true,
+      text: jest.fn().mockResolvedValue('{"origins": ["https://other.com"]}'),
+      headers: new Map([['content-length', '100']]),
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+
+    const result = await validateOrigin('https://example.com', 'example.org');
+    expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  // Well-known endpoint fallback tests
+  it('should fallback to well-known endpoint and return SUCCESS when it matches', async () => {
     const mockResponse = {
       ok: true,
       text: jest.fn().mockResolvedValue('{"origins": ["https://foo.com"]}'),
@@ -256,17 +307,33 @@ describe('validateOrigin', () => {
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    const result = await validateOrigin('https://foo.com', 'foo.com');
+    const result = await validateOrigin('https://foo.com', 'bar.com');
     expect(result).toBe(AuthenticatorStatus.SUCCESS);
+    expect(global.fetch).toHaveBeenCalled();
   });
 
-  it('should throw error for fetch errors', async () => {
+  it('should return BAD_RELYING_PARTY_ID_NO_JSON_MATCH when both checks fail', async () => {
+    const mockResponse = {
+      ok: true,
+      text: jest.fn().mockResolvedValue('{"origins": ["https://bar.com"]}'),
+      headers: new Map([['content-length', '100']]),
+    };
+    (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
+
+    const result = await validateOrigin('https://foo.com', 'baz.com');
+    expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
+  });
+
+  it('should return BAD_RELYING_PARTY_ID_NO_JSON_MATCH for fetch errors', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    await expect(validateOrigin('https://foo.com', 'foo.com')).rejects.toThrow('Network error');
+    const result = await validateOrigin('https://foo.com', 'bar.com');
+    expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
   });
 
-  it('should throw error for 404 responses', async () => {
+  it('should return BAD_RELYING_PARTY_ID_NO_JSON_MATCH for 404 responses', async () => {
     const mockResponse = {
       ok: false,
       status: 404,
@@ -274,6 +341,8 @@ describe('validateOrigin', () => {
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    await expect(validateOrigin('https://foo.com', 'foo.com')).rejects.toThrow('HTTP 404: Not Found');
+    const result = await validateOrigin('https://foo.com', 'bar.com');
+    expect(result).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
+    expect(global.fetch).toHaveBeenCalled();
   });
 });

@@ -43,6 +43,8 @@ export async function validatePasskeyOrigin(rpId: string, origin: string): Promi
   message: string;
 }> {
   try {
+    // The validateOrigin function expects (callerOrigin, domain) parameters
+    // where callerOrigin is the origin to validate and domain is the rpId to check against
     const status = await validateOrigin(origin, rpId);
     const isValid = status === AuthenticatorStatus.SUCCESS;
     const message = authenticatorStatusToString(status);

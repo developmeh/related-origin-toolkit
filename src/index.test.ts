@@ -43,7 +43,9 @@ describe('validatePasskeyOrigin', () => {
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    const result = await validatePasskeyOrigin('foo.com', 'https://foo.com');
+    // Use a different domain that is not a valid rpId for the origin
+    // 'bar.com' is not a valid rpId for 'https://foo.com'
+    const result = await validatePasskeyOrigin('bar.com', 'https://foo.com');
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
@@ -53,11 +55,13 @@ describe('validatePasskeyOrigin', () => {
   it('should return invalid result for fetch errors', async () => {
     (global.fetch as jest.Mock).mockRejectedValue(new Error('Network error'));
 
-    const result = await validatePasskeyOrigin('foo.com', 'https://foo.com');
+    // Use a different domain that is not a valid rpId for the origin
+    // 'bar.com' is not a valid rpId for 'https://foo.com'
+    const result = await validatePasskeyOrigin('bar.com', 'https://foo.com');
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toContain('Validation failed: Network error');
+    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
   });
 
   it('should return invalid result for 404 responses', async () => {
@@ -68,11 +72,13 @@ describe('validatePasskeyOrigin', () => {
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    const result = await validatePasskeyOrigin('foo.com', 'https://foo.com');
+    // Use a different domain that is not a valid rpId for the origin
+    // 'bar.com' is not a valid rpId for 'https://foo.com'
+    const result = await validatePasskeyOrigin('bar.com', 'https://foo.com');
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toContain('Validation failed');
+    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
   });
 
   it('should handle label limit hit scenario', async () => {
@@ -83,7 +89,9 @@ describe('validatePasskeyOrigin', () => {
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
-    const result = await validatePasskeyOrigin('foo.com', 'https://foo.com');
+    // Use a different domain that is not a valid rpId for the origin
+    // 'bar.com' is not a valid rpId for 'https://foo.com'
+    const result = await validatePasskeyOrigin('bar.com', 'https://foo.com');
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS);
@@ -208,20 +216,36 @@ describe('integration tests', () => {
 
   it('should work end-to-end for a typical browser extension use case', async () => {
     // Simulate a typical scenario where a browser extension validates an origin
+    // 'example.com' is a valid rpId for 'https://app.example.com'
     const rpId = 'example.com';
     const origin = 'https://app.example.com';
+    
+    // No need for mock response since the direct validation should succeed
+    const result = await validatePasskeyOrigin(rpId, origin);
+    
+    expect(result.isValid).toBe(true);
+    expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
+    expect(result.message).toBe('SUCCESS');
+    
+    // Direct validation should succeed, so fetch should not be called
+    expect(global.fetch).not.toHaveBeenCalled();
+  });
+
+  it('should handle real-world edge cases with well-known fallback', async () => {
+    // Test with a case where direct validation fails but well-known succeeds
+    // 'other.com' is not a valid rpId for 'https://example.com'
+    const rpId = 'other.com';
+    const origin = 'https://example.com';
     const wellKnownResponse = {
       origins: [
-        'https://example.com',
-        'https://app.example.com',
-        'https://mobile.example.com'
+        'https://example.com'
       ]
     };
 
     const mockResponse = {
       ok: true,
       text: jest.fn().mockResolvedValue(JSON.stringify(wellKnownResponse)),
-      headers: new Map([['content-length', '200']]),
+      headers: new Map([['content-length', '100']]),
     };
     (global.fetch as jest.Mock).mockResolvedValue(mockResponse);
 
@@ -233,7 +257,7 @@ describe('integration tests', () => {
     
     // Verify the correct URL was fetched
     expect(global.fetch).toHaveBeenCalledWith(
-      'https://example.com/.well-known/webauthn',
+      'https://other.com/.well-known/webauthn',
       expect.objectContaining({
         headers: expect.objectContaining({
           'Accept': 'application/json',
@@ -243,9 +267,10 @@ describe('integration tests', () => {
     );
   });
 
-  it('should handle real-world edge cases', async () => {
+  it('should handle label limit hit scenario in well-known endpoint', async () => {
     // Test with a complex .well-known response that hits the label limit
-    const rpId = 'example.com';
+    // 'other.com' is not a valid rpId for 'https://target.example.com'
+    const rpId = 'other.com';
     const origin = 'https://target.example.com';
     const wellKnownResponse = {
       origins: [
