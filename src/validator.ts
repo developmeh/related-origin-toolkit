@@ -200,13 +200,104 @@ export async function fetchWellKnownWebAuthn(domain: string): Promise<string> {
 }
 
 /**
- * Validates if a caller origin is authorized by fetching and checking a domain's .well-known/webauthn file.
+ * Checks if a domain (rpId) is a valid registrable domain suffix of an origin or matches it.
+ * According to WebAuthn spec, a Relying Party ID (rpid) should be either:
+ * 1. Equal to the origin's effective domain, or
+ * 2. A registrable domain suffix of the origin's effective domain
+ * 
+ * For example, if the origin is 'https://sub.example.com', then 'example.com' is a valid rpId.
+ * But if the origin is 'https://notexample.com', then 'example.com' is not a valid rpId.
+ * 
+ * @param callerOrigin The origin to validate
+ * @param domain The domain (rpId) to check against
+ * @returns true if the domain is valid for the origin, false otherwise
+ */
+function isValidDomainForOrigin(callerOrigin: string, domain: string): boolean {
+  try {
+    // Parse the caller origin
+    const originURL = new URL(callerOrigin);
+    const originHostname = originURL.hostname;
+    
+    // If domain exactly matches the hostname, it's valid
+    if (domain === originHostname) {
+      return true;
+    }
+    
+    // Check if domain is a registrable domain suffix of the origin's hostname
+    // For example, if origin is sub.example.com, then example.com is valid
+    // But if origin is notexample.com, then example.com is not valid
+    
+    // First, ensure there's a proper subdomain boundary
+    // The domain should be a suffix of the origin hostname, preceded by a dot
+    if (!originHostname.endsWith('.' + domain)) {
+      return false;
+    }
+    
+    // Use psl to get the effective TLD+1 for both
+    const originParsed = psl.parse(originHostname);
+    const domainParsed = psl.parse(domain);
+    
+    // If either parsing fails, it's not valid
+    if (!originParsed || typeof originParsed === 'string' || !('domain' in originParsed) || !originParsed.domain) {
+      return false;
+    }
+    if (!domainParsed || typeof domainParsed === 'string' || !('domain' in domainParsed) || !domainParsed.domain) {
+      return false;
+    }
+    
+    // For the domain to be a valid rpId, it must be either:
+    // 1. Equal to the origin's hostname, or
+    // 2. A registrable domain suffix of the origin's hostname
+    
+    // Check if the domain is a registrable domain suffix of the origin's hostname
+    // This means the domain must be either:
+    // - The same as the origin's eTLD+1, or
+    // - A parent domain of the origin's eTLD+1
+    
+    // Get the eTLD+1 for the origin (e.g., example.com from sub.example.com)
+    const originETLDPlus1 = originParsed.domain;
+    
+    // Get the eTLD+1 for the domain (e.g., example.com from example.com)
+    const domainETLDPlus1 = domainParsed.domain;
+    
+    // If the domain is the same as the origin's eTLD+1, it's valid
+    if (domain === originETLDPlus1) {
+      return true;
+    }
+    
+    // If the domain's eTLD+1 is the same as the origin's eTLD+1,
+    // and the domain is a suffix of the origin's hostname, it's valid
+    if (domainETLDPlus1 === originETLDPlus1 && originHostname.endsWith('.' + domain)) {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    // If there's any error parsing the URLs, it's not valid
+    return false;
+  }
+}
+
+/**
+ * Validates if a caller origin is authorized by first checking if the domain is a valid
+ * effective subdomain of the origin or matches it. If not, it tries the .well-known/webauthn endpoint.
  * 
  * @param callerOrigin The origin to validate
  * @param domain The domain to check against
  * @returns Promise resolving to AuthenticatorStatus
  */
 export async function validateOrigin(callerOrigin: string, domain: string): Promise<AuthenticatorStatus> {
-  const jsonData = await fetchWellKnownWebAuthn(domain);
-  return validateWellKnownJSON(callerOrigin, jsonData);
+  // First check if the domain is a valid effective subdomain of the origin or matches it
+  if (isValidDomainForOrigin(callerOrigin, domain)) {
+    return AuthenticatorStatus.SUCCESS;
+  }
+  
+  // If not, try the well-known endpoint
+  try {
+    const jsonData = await fetchWellKnownWebAuthn(domain);
+    return validateWellKnownJSON(callerOrigin, jsonData);
+  } catch (error) {
+    // If there's an error fetching or parsing the well-known endpoint, it's not valid
+    return AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH;
+  }
 }
