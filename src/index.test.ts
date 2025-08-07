@@ -61,7 +61,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should return invalid result for 404 responses', async () => {
@@ -78,7 +78,7 @@ describe('validatePasskeyOrigin', () => {
     
     expect(result.isValid).toBe(false);
     expect(result.status).toBe(AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH);
-    expect(result.message).toBe('BAD_RELYING_PARTY_ID_NO_JSON_MATCH');
+    expect(result.message).toBe('Origin not authorized by the relying party');
   });
 
   it('should handle label limit hit scenario', async () => {
@@ -226,7 +226,7 @@ describe('integration tests', () => {
     
     expect(result.isValid).toBe(true);
     expect(result.status).toBe(AuthenticatorStatus.SUCCESS);
-    expect(result.message).toBe('SUCCESS');
+    expect(result.message).toBe('Success');
     
     // Direct validation should succeed, so fetch should not be called
     expect(global.fetch).not.toHaveBeenCalled();
