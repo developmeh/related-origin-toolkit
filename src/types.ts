@@ -11,6 +11,8 @@ export enum AuthenticatorStatus {
   BAD_RELYING_PARTY_ID_NO_JSON_MATCH = 2,
   /** Indicates that the relying party ID JSON did not match the caller origin and hit the label limit */
   BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS = 3,
+  /** Indicates that the relying party ID is not a valid subdomain of the caller origin */
+  BAD_RELYING_PARTY_ID_NOT_SUBDOMAIN_OF_ORIGIN = 4,
 }
 
 /**
@@ -56,19 +58,28 @@ export const CONSTANTS = {
 } as const;
 
 /**
- * Converts AuthenticatorStatus enum to string representation.
+ * LoggingAdapter is a function that handles logging with error handling.
+ * It accepts a message and an optional error object.
+ */
+export type LoggingAdapter = (message: string, error?: Error) => void;
+
+/**
+ * Converts AuthenticatorStatus enum to a user-friendly string representation.
+ * These messages are designed to be spec-compliant while preserving informational detail.
  */
 export function authenticatorStatusToString(status: AuthenticatorStatus): string {
   switch (status) {
     case AuthenticatorStatus.SUCCESS:
-      return 'SUCCESS';
+      return 'Success';
     case AuthenticatorStatus.BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR:
-      return 'BAD_RELYING_PARTY_ID_JSON_PARSE_ERROR';
+      return 'Invalid format in .well-known/webauthn file';
     case AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH:
-      return 'BAD_RELYING_PARTY_ID_NO_JSON_MATCH';
+      return 'Origin not authorized by the relying party';
     case AuthenticatorStatus.BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS:
-      return 'BAD_RELYING_PARTY_ID_NO_JSON_MATCH_HIT_LIMITS';
+      return 'Origin not authorized by the relying party (exceeded maximum of 5 unique domains)';
+    case AuthenticatorStatus.BAD_RELYING_PARTY_ID_NOT_SUBDOMAIN_OF_ORIGIN:
+      return 'Relying Party ID is not a valid subdomain of the origin';
     default:
-      return `UNKNOWN_STATUS(${status})`;
+      return `Unknown status (${status})`;
   }
 }
