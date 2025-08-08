@@ -1,5 +1,5 @@
 {
-  "name": "related-origin-toolkit",
+  "name": "webauthn-rpid-validation-toolkit",
   "version": "1.0.0",
   "description": "A TypeScript library for validating passkey/WebAuthn origin constraints in .well-known/webauthn endpoints.",
   "main": "dist/index.js",
@@ -28,7 +28,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/developmeh/related-origin-toolkit.git"
+    "url": "https://github.com/developmeh/webauthn-rpid-validation-toolkit.git"
   },
   "devDependencies": {
     "@types/jest": "^29.5.0",

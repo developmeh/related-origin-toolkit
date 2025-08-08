@@ -1,4 +1,4 @@
-# Passkey Origin Validator (TypeScript)
+# WebAuthn RPID Validation Toolkit (TypeScript)
 
 A TypeScript library for validating passkey/WebAuthn origin constraints in .well-known/webauthn endpoints. This library is based on the Chromium project's implementation of WebAuthn security checking and helps ensure that your WebAuthn implementation follows the same constraints as browsers.
 
@@ -17,7 +17,7 @@ A TypeScript library for validating passkey/WebAuthn origin constraints in .well
 ## Installation
 
 ```bash
-npm install passkey-origin-validator
+npm install webauthn-rpid-validation-toolkit
 ```
 
 ## Quick Start
@@ -25,7 +25,7 @@ npm install passkey-origin-validator
 ### Basic Usage
 
 ```typescript
-import { validatePasskeyOrigin } from 'passkey-origin-validator';
+import { validatePasskeyOrigin } from 'webauthn-rpid-validation-toolkit';
 
 // Validate an origin against a relying party's .well-known/webauthn endpoint
 const result = await validatePasskeyOrigin('example.com', 'https://app.example.com');
@@ -40,7 +40,7 @@ if (result.isValid) {
 ### Browser Extension Usage
 
 ```typescript
-import { validatePasskeyOrigin, AuthenticatorStatus } from 'passkey-origin-validator';
+import { validatePasskeyOrigin, AuthenticatorStatus } from 'webauthn-rpid-validation-toolkit';
 
 // In your browser extension's content script or background script
 async function validateWebAuthnRequest(rpId: string, origin: string) {
@@ -73,7 +73,7 @@ async function validateWebAuthnRequest(rpId: string, origin: string) {
 If you already have the .well-known/webauthn JSON data:
 
 ```typescript
-import { validatePasskeyOriginFromJSON } from 'passkey-origin-validator';
+import { validatePasskeyOriginFromJSON } from 'webauthn-rpid-validation-toolkit';
 
 const wellKnownJson = '{"origins": ["https://example.com", "https://app.example.com"]}';
 const result = validatePasskeyOriginFromJSON('https://app.example.com', wellKnownJson);
@@ -201,7 +201,7 @@ import {
   validatePasskeyOrigin, 
   AuthenticatorStatus,
   isLabelLimitHit 
-} from 'passkey-origin-validator';
+} from 'webauthn-rpid-validation-toolkit';
 
 chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
   if (request.type === 'VALIDATE_WEBAUTHN_ORIGIN') {
@@ -244,7 +244,7 @@ chrome.runtime.onMessage.addListener(async (request, sender, sendResponse) => {
 
 ```typescript
 import express from 'express';
-import { validatePasskeyOrigin } from 'passkey-origin-validator';
+import { validatePasskeyOrigin } from 'webauthn-rpid-validation-toolkit';
 
 const app = express();
 
@@ -269,7 +269,7 @@ app.listen(3000);
 
 ```typescript
 import { useState, useCallback } from 'react';
-import { validatePasskeyOrigin, ValidationResult } from 'passkey-origin-validator';
+import { validatePasskeyOrigin, ValidationResult } from 'webauthn-rpid-validation-toolkit';
 
 export function usePasskeyValidation() {
   const [isLoading, setIsLoading] = useState(false);

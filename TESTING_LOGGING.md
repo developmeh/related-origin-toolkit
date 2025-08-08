@@ -1,10 +1,10 @@
 # Testing the Logging Functionality
 
-This document describes how to test the logging functionality in the Related Origin Toolkit.
+This document describes how to test the logging functionality in the WebAuthn RPID Validation Toolkit.
 
 ## Overview
 
-The Related Origin Toolkit includes a logging system that allows for:
+The WebAuthn RPID Validation Toolkit includes a logging system that allows for:
 1. Default logging using `console.log`
 2. Custom logging through a `LoggingAdapter` interface
 3. Error handling for logging functions
